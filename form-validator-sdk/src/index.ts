@@ -13,6 +13,9 @@ import {
   FieldValidationState,
   FieldRuleHit,
   ValidationContext,
+  ValidationScenario,
+  ScenarioSkippedRule,
+  ServerError,
 } from './types';
 import {
   validate,
@@ -21,6 +24,7 @@ import {
   validateSync,
   validateStepSync,
   validateFieldSync,
+  mergeServerErrors,
 } from './validator';
 import { sanitizeFormValues, sanitizeField } from './sanitizer';
 import { getMessageTemplate } from './messages';
@@ -37,6 +41,7 @@ import {
   conditionalDisplay,
   custom,
   asyncCustom,
+  withGroups,
   formatNames,
 } from './presets';
 
@@ -55,6 +60,9 @@ export {
   FieldValidationState,
   FieldRuleHit,
   ValidationContext,
+  ValidationScenario,
+  ScenarioSkippedRule,
+  ServerError,
 };
 
 export {
@@ -70,10 +78,12 @@ export {
   conditionalDisplay,
   custom,
   asyncCustom,
+  withGroups,
   formatNames,
   getMessageTemplate,
   sanitizeFormValues,
   sanitizeField,
+  mergeServerErrors,
 };
 
 export class FormValidator {
@@ -109,12 +119,19 @@ export class FormValidator {
     return validateFieldSync(this.schema, values, fieldName, { locale: this.locale, ...options });
   }
 
+  mergeServerErrors(result: ValidationResult, serverErrors: ServerError[]): ValidationResult {
+    return mergeServerErrors(result, serverErrors, this.schema);
+  }
+
   sanitize(values: Record<string, unknown>): Record<string, unknown> {
     return sanitizeFormValues(values, this.schema);
   }
 
   getVisibleFields(values: Record<string, unknown>): FieldDefinition[] {
     return this.schema.fields.filter((field) => {
+      if (typeof field.when === 'function') {
+        return field.when(values);
+      }
       if (typeof field.visible === 'function') {
         return field.visible(values);
       }

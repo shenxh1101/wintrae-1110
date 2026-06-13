@@ -140,7 +140,7 @@ export const presetRules = {
 };
 
 export function required(message?: string): FieldRule {
-  return { type: 'required', message };
+  return { type: 'required', message, groups: ['step', 'submit'] };
 }
 
 export function minLength(min: number, message?: string): FieldRule {
@@ -254,7 +254,12 @@ export function asyncCustom(
     asyncValidator,
     message,
     debounce: options?.debounce,
+    groups: ['submit'],
   };
+}
+
+export function withGroups(rule: FieldRule, ...groups: string[]): FieldRule {
+  return { ...rule, groups };
 }
 
 export const formatNames: Record<string, string> = {

@@ -18,6 +18,8 @@ export type SyncValidatorResult = boolean | string;
 export type AsyncValidatorResult = Promise<SyncValidatorResult>;
 export type ValidatorResult = SyncValidatorResult | AsyncValidatorResult;
 
+export type ValidationScenario = 'draft' | 'step' | 'submit';
+
 export interface FieldRule {
   type: RuleType;
   value?: unknown;
@@ -30,6 +32,7 @@ export interface FieldRule {
   fields?: string[];
   triggerFields?: string[];
   debounce?: number;
+  groups?: string[];
 }
 
 export interface FieldDefinition {
@@ -38,6 +41,7 @@ export interface FieldDefinition {
   type: FieldType;
   rules: FieldRule[];
   step?: number;
+  when?: (formValues: Record<string, unknown>) => boolean;
   visible?: (formValues: Record<string, unknown>) => boolean;
   visibleDependsOn?: string[];
   requiredWhen?: (formValues: Record<string, unknown>) => boolean;
@@ -58,10 +62,12 @@ export interface SanitizeOptions {
 export interface ValidationError {
   field: string;
   label: string;
-  ruleType: RuleType;
+  ruleType: RuleType | 'server';
   message: string;
   step?: number;
   async?: boolean;
+  server?: boolean;
+  group?: string;
 }
 
 export interface FieldRuleHit {
@@ -70,6 +76,8 @@ export interface FieldRuleHit {
   passed: boolean;
   message?: string;
   async?: boolean;
+  skippedByScenario?: boolean;
+  group?: string;
 }
 
 export interface FieldValidationState {
@@ -88,6 +96,15 @@ export interface ValidationContext {
   skippedFields: string[];
   visibleFields: string[];
   fieldStates: Record<string, FieldValidationState>;
+  scenarioSkippedRules: ScenarioSkippedRule[];
+}
+
+export interface ScenarioSkippedRule {
+  field: string;
+  label: string;
+  ruleIndex: number;
+  ruleType: RuleType;
+  group: string;
 }
 
 export interface ValidationResult extends ValidationContext {
@@ -97,11 +114,19 @@ export interface ValidationResult extends ValidationContext {
   firstError: ValidationError | null;
   firstErrorStep: number | null;
   submitValues: Record<string, unknown>;
+  scenario: ValidationScenario;
 }
 
 export interface FormSchema {
   fields: FieldDefinition[];
   globalSanitize?: SanitizeOptions;
+  scenarioGroups?: Record<ValidationScenario, string[]>;
+}
+
+export interface ServerError {
+  field: string;
+  message: string;
+  step?: number;
 }
 
 export interface MessageTemplate {
@@ -127,4 +152,5 @@ export interface ValidateOptions {
   fields?: string[];
   sanitize?: boolean;
   skipAsync?: boolean;
+  scenario?: ValidationScenario;
 }
