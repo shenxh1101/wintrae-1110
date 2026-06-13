@@ -4,13 +4,24 @@ import {
   FieldRule,
   ValidationError,
   ValidationResult,
+  ValidateOptions,
   SanitizeOptions,
   FieldType,
   RuleType,
   MessageTemplate,
   Locale,
+  FieldValidationState,
+  FieldRuleHit,
+  ValidationContext,
 } from './types';
-import { validate, validateStep, validateField, ValidateOptions } from './validator';
+import {
+  validate,
+  validateStep,
+  validateField,
+  validateSync,
+  validateStepSync,
+  validateFieldSync,
+} from './validator';
 import { sanitizeFormValues, sanitizeField } from './sanitizer';
 import { getMessageTemplate } from './messages';
 import {
@@ -25,6 +36,7 @@ import {
   crossField,
   conditionalDisplay,
   custom,
+  asyncCustom,
   formatNames,
 } from './presets';
 
@@ -40,6 +52,9 @@ export {
   RuleType,
   MessageTemplate,
   Locale,
+  FieldValidationState,
+  FieldRuleHit,
+  ValidationContext,
 };
 
 export {
@@ -54,6 +69,7 @@ export {
   crossField,
   conditionalDisplay,
   custom,
+  asyncCustom,
   formatNames,
   getMessageTemplate,
   sanitizeFormValues,
@@ -69,16 +85,28 @@ export class FormValidator {
     this.locale = locale;
   }
 
-  validate(values: Record<string, unknown>, options?: ValidateOptions): ValidationResult {
+  async validate(values: Record<string, unknown>, options?: ValidateOptions): Promise<ValidationResult> {
     return validate(this.schema, values, { locale: this.locale, ...options });
   }
 
-  validateStep(values: Record<string, unknown>, step: number, options?: Omit<ValidateOptions, 'step'>): ValidationResult {
+  async validateStep(values: Record<string, unknown>, step: number, options?: Omit<ValidateOptions, 'step'>): Promise<ValidationResult> {
     return validateStep(this.schema, values, step, { locale: this.locale, ...options });
   }
 
-  validateField(values: Record<string, unknown>, fieldName: string, options?: Omit<ValidateOptions, 'fields'>): ValidationError | null {
+  async validateField(values: Record<string, unknown>, fieldName: string, options?: Omit<ValidateOptions, 'fields'>): Promise<ValidationError | null> {
     return validateField(this.schema, values, fieldName, { locale: this.locale, ...options });
+  }
+
+  validateSync(values: Record<string, unknown>, options?: Omit<ValidateOptions, 'skipAsync'>): ValidationResult {
+    return validateSync(this.schema, values, { locale: this.locale, ...options });
+  }
+
+  validateStepSync(values: Record<string, unknown>, step: number, options?: Omit<ValidateOptions, 'step' | 'skipAsync'>): ValidationResult {
+    return validateStepSync(this.schema, values, step, { locale: this.locale, ...options });
+  }
+
+  validateFieldSync(values: Record<string, unknown>, fieldName: string, options?: Omit<ValidateOptions, 'fields' | 'skipAsync'>): ValidationError | null {
+    return validateFieldSync(this.schema, values, fieldName, { locale: this.locale, ...options });
   }
 
   sanitize(values: Record<string, unknown>): Record<string, unknown> {

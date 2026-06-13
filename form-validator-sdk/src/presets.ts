@@ -1,4 +1,4 @@
-import { FieldRule } from './types';
+import { FieldRule, AsyncValidatorResult } from './types';
 
 const ID_CARD_PATTERN = /^[1-9]\d{5}(19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/;
 const PHONE_PATTERN = /^1[3-9]\d{9}$/;
@@ -19,6 +19,22 @@ function validateIdCardChecksum(id: string): boolean {
   }
   const checkChar = checkCodes[sum % 11];
   return id[17].toUpperCase() === checkChar;
+}
+
+function looseEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || a === undefined || b === undefined) {
+    return a === b;
+  }
+  const numA = Number(a);
+  const numB = Number(b);
+  if (!isNaN(numA) && !isNaN(numB) && isFinite(numA) && isFinite(numB)) {
+    return numA === numB;
+  }
+  if (typeof a === 'string' && typeof b === 'string') {
+    return a === b;
+  }
+  return String(a) === String(b);
 }
 
 export const presetRules = {
@@ -182,19 +198,21 @@ export function crossField(
       const compareValue = formValues[compareField];
       const numA = Number(value);
       const numB = Number(compareValue);
+      const bothNumeric = !isNaN(numA) && !isNaN(numB) && isFinite(numA) && isFinite(numB);
+
       switch (operator) {
         case 'eq':
-          return value === compareValue;
+          return looseEqual(value, compareValue);
         case 'neq':
-          return value !== compareValue;
+          return !looseEqual(value, compareValue);
         case 'gt':
-          return !isNaN(numA) && !isNaN(numB) && numA > numB;
+          return bothNumeric && numA > numB;
         case 'gte':
-          return !isNaN(numA) && !isNaN(numB) && numA >= numB;
+          return bothNumeric && numA >= numB;
         case 'lt':
-          return !isNaN(numA) && !isNaN(numB) && numA < numB;
+          return bothNumeric && numA < numB;
         case 'lte':
-          return !isNaN(numA) && !isNaN(numB) && numA <= numB;
+          return bothNumeric && numA <= numB;
         default:
           return true;
       }
@@ -224,6 +242,19 @@ export function custom(
   message?: string,
 ): FieldRule {
   return { type: 'custom', validator, message };
+}
+
+export function asyncCustom(
+  asyncValidator: (value: unknown, formValues: Record<string, unknown>) => AsyncValidatorResult,
+  message?: string,
+  options?: { debounce?: number },
+): FieldRule {
+  return {
+    type: 'async',
+    asyncValidator,
+    message,
+    debounce: options?.debounce,
+  };
 }
 
 export const formatNames: Record<string, string> = {

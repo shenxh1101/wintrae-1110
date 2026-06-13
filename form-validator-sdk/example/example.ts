@@ -164,13 +164,13 @@ function main() {
   const validator = createFormValidator(loanFormSchema, 'zh-CN');
 
   printSeparator('场景 1：空表单校验 - 全部必填字段报错');
-  const result1 = validator.validate({});
+  const result1 = validator.validateSync({});
   console.log(`  校验结果: ${result1.valid ? '通过' : '未通过'}`);
   console.log(`  错误数量: ${result1.errors.length}`);
   printErrors(result1.errors);
 
   printSeparator('场景 2：步骤表单 - 仅校验步骤 1');
-  const step1Result = validator.validateStep({}, 1);
+  const step1Result = validator.validateStepSync({}, 1);
   console.log(`  步骤1校验结果: ${step1Result.valid ? '通过' : '未通过'}`);
   printErrors(step1Result.errors);
 
@@ -181,11 +181,11 @@ function main() {
     phone: '13800138000',
     email: 'zhangsan@example.com',
   };
-  const step1Check = validator.validateStep(step1Data, 1);
+  const step1Check = validator.validateStepSync(step1Data, 1);
   console.log(`  步骤1数据: ${JSON.stringify(step1Data, null, 2)}`);
   console.log(`  步骤1校验结果: ${step1Check.valid ? '通过 ✅' : '未通过 ❌'}`);
 
-  const step2Result = validator.validateStep({ ...step1Data, loanAmount: 500 }, 2);
+  const step2Result = validator.validateStepSync({ ...step1Data, loanAmount: 500 }, 2);
   console.log(`  步骤2（金额不足）校验结果:`);
   printErrors(step2Result.errors);
 
@@ -210,7 +210,7 @@ function main() {
     confirmIncome: '200000',
     company: '测试公司',
   };
-  const crossResult = validator.validate(crossFieldData, { step: 2 });
+  const crossResult = validator.validateSync(crossFieldData, { step: 2 });
   printErrors(crossResult.errors);
 
   printSeparator('场景 6：条件显示 - 有担保人时担保人信息必填');
@@ -220,7 +220,7 @@ function main() {
     guarantorName: '',
     guarantorPhone: '',
   };
-  const condResult = validator.validateStep(condData, 3);
+  const condResult = validator.validateStepSync(condData, 3);
   printErrors(condResult.errors);
 
   printSeparator('场景 7：条件显示 - 无担保人时担保人信息不校验');
@@ -229,22 +229,22 @@ function main() {
     hasGuarantor: false,
     agreement: true,
   };
-  const noGuarantorResult = validator.validateStep(noGuarantorData, 3);
+  const noGuarantorResult = validator.validateStepSync(noGuarantorData, 3);
   console.log(`  校验结果: ${noGuarantorResult.valid ? '通过 ✅' : '未通过 ❌'}`);
   printErrors(noGuarantorResult.errors);
 
   printSeparator('场景 8：单字段校验');
-  const fieldError = validator.validateField({ phone: '1380000' }, 'phone');
+  const fieldError = validator.validateFieldSync({ phone: '1380000' }, 'phone');
   console.log(`  手机号 "1380000" 校验: ${fieldError ? fieldError.message : '通过 ✅'}`);
 
   printSeparator('场景 9：自定义校验函数');
   const customData = { ...step1Data, agreement: false };
-  const customResult = validator.validateField(customData, 'agreement');
+  const customResult = validator.validateFieldSync(customData, 'agreement');
   console.log(`  协议未勾选校验: ${customResult ? customResult.message : '通过 ✅'}`);
 
   printSeparator('场景 10：英文提示切换');
   validator.setLocale('en-US');
-  const enResult = validator.validateStep({}, 1);
+  const enResult = validator.validateStepSync({}, 1);
   printErrors(enResult.errors);
 
   printSeparator('场景 11：完整正确数据校验');
@@ -263,7 +263,7 @@ function main() {
     agreement: true,
     remark: '请尽快处理',
   };
-  const fullResult = validator.validate(validData);
+  const fullResult = validator.validateSync(validData);
   console.log(`  校验结果: ${fullResult.valid ? '通过 ✅' : '未通过 ❌'}`);
   console.log(`  错误数量: ${fullResult.errors.length}`);
 

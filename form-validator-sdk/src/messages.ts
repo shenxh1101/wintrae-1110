@@ -22,6 +22,7 @@ const zhCN: MessageTemplate = {
   },
   conditionalDisplay: (label) => `${label}在当前条件下不能为空`,
   custom: (label) => `${label}校验失败`,
+  async: (label) => `${label}校验未通过`,
 };
 
 const enUS: MessageTemplate = {
@@ -46,6 +47,7 @@ const enUS: MessageTemplate = {
   },
   conditionalDisplay: (label) => `${label} is required under current conditions`,
   custom: (label) => `${label} validation failed`,
+  async: (label) => `${label} async validation failed`,
 };
 
 const messages: Record<Locale, MessageTemplate> = {
