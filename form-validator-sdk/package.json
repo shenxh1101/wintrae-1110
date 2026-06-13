@@ -1,0 +1,17 @@
+{
+  "name": "form-validator-sdk",
+  "version": "1.0.0",
+  "description": "表单规则类库 / SDK：字段定义、规则组合、提示文案、结果解析",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "example": "ts-node example/example.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  },
+  "license": "MIT"
+}
