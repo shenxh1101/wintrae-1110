@@ -23,6 +23,9 @@ const zhCN: MessageTemplate = {
   conditionalDisplay: (label) => `${label}在当前条件下不能为空`,
   custom: (label) => `${label}校验失败`,
   async: (label) => `${label}校验未通过`,
+  arrayMinLength: (label, min) => `${label}至少需要${min}项`,
+  arrayMaxLength: (label, max) => `${label}不能超过${max}项`,
+  eachItem: (label, index) => `${label}第${index + 1}项校验失败`,
 };
 
 const enUS: MessageTemplate = {
@@ -48,6 +51,9 @@ const enUS: MessageTemplate = {
   conditionalDisplay: (label) => `${label} is required under current conditions`,
   custom: (label) => `${label} validation failed`,
   async: (label) => `${label} async validation failed`,
+  arrayMinLength: (label, min) => `${label} must have at least ${min} items`,
+  arrayMaxLength: (label, max) => `${label} must not have more than ${max} items`,
+  eachItem: (label, index) => `${label} item #${index + 1} is invalid`,
 };
 
 const messages: Record<Locale, MessageTemplate> = {

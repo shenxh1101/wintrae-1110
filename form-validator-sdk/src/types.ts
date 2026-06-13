@@ -12,7 +12,10 @@ export type RuleType =
   | 'crossField'
   | 'custom'
   | 'async'
-  | 'conditionalDisplay';
+  | 'conditionalDisplay'
+  | 'eachItem'
+  | 'arrayMinLength'
+  | 'arrayMaxLength';
 
 export type SyncValidatorResult = boolean | string;
 export type AsyncValidatorResult = Promise<SyncValidatorResult>;
@@ -33,6 +36,8 @@ export interface FieldRule {
   triggerFields?: string[];
   debounce?: number;
   groups?: string[];
+  itemValidator?: (itemValue: unknown, itemIndex: number, formValues: Record<string, unknown>) => ValidatorResult;
+  itemSchema?: FieldDefinition;
 }
 
 export interface FieldDefinition {
@@ -68,6 +73,8 @@ export interface ValidationError {
   async?: boolean;
   server?: boolean;
   group?: string;
+  index?: number;
+  nestedField?: string;
 }
 
 export interface FieldRuleHit {
@@ -78,6 +85,8 @@ export interface FieldRuleHit {
   async?: boolean;
   skippedByScenario?: boolean;
   group?: string;
+  index?: number;
+  nestedField?: string;
 }
 
 export interface FieldValidationState {
@@ -115,6 +124,9 @@ export interface ValidationResult extends ValidationContext {
   firstErrorStep: number | null;
   submitValues: Record<string, unknown>;
   scenario: ValidationScenario;
+  errorsByField: Record<string, ValidationError[]>;
+  errorsByGroup: Record<string, ValidationError[]>;
+  errorsByScenario: Record<ValidationScenario, ValidationError[]>;
 }
 
 export interface FormSchema {
@@ -142,6 +154,9 @@ export interface MessageTemplate {
   conditionalDisplay: (label: string) => string;
   custom: (label: string) => string;
   async: (label: string) => string;
+  arrayMinLength: (label: string, min: number) => string;
+  arrayMaxLength: (label: string, max: number) => string;
+  eachItem: (label: string, index: number) => string;
 }
 
 export type Locale = 'zh-CN' | 'en-US';
@@ -153,4 +168,36 @@ export interface ValidateOptions {
   sanitize?: boolean;
   skipAsync?: boolean;
   scenario?: ValidationScenario;
+}
+
+export interface PageStateOptions {
+  locale?: Locale;
+  currentStep?: number;
+  scenario?: ValidationScenario;
+  skipAsync?: boolean;
+}
+
+export interface PageState {
+  currentStep: number;
+  visibleFields: FieldDefinition[];
+  visibleFieldNames: string[];
+  skippedFields: string[];
+  allFieldStates: Record<string, FieldValidationState>;
+  visibleFieldStates: Record<string, FieldValidationState>;
+  currentStepErrors: ValidationError[];
+  currentStepErrorsByField: Record<string, ValidationError[]>;
+  currentStepFirstError: ValidationError | null;
+  allErrors: ValidationError[];
+  allErrorsByStep: Record<number, ValidationError[]>;
+  allErrorsByField: Record<string, ValidationError[]>;
+  allErrorsByGroup: Record<string, ValidationError[]>;
+  draftErrors: ValidationError[];
+  stepErrors: ValidationError[];
+  submitErrors: ValidationError[];
+  sanitizedValues: Record<string, unknown>;
+  submitValues: Record<string, unknown>;
+  scenarioSkippedRules: ScenarioSkippedRule[];
+  valid: boolean;
+  currentStepValid: boolean;
+  scenario: ValidationScenario;
 }

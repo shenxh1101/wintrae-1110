@@ -16,6 +16,8 @@ import {
   ValidationScenario,
   ScenarioSkippedRule,
   ServerError,
+  PageState,
+  PageStateOptions,
 } from './types';
 import {
   validate,
@@ -25,6 +27,8 @@ import {
   validateStepSync,
   validateFieldSync,
   mergeServerErrors,
+  computePageState,
+  computePageStateSync,
 } from './validator';
 import { sanitizeFormValues, sanitizeField } from './sanitizer';
 import { getMessageTemplate } from './messages';
@@ -43,6 +47,9 @@ import {
   asyncCustom,
   withGroups,
   formatNames,
+  arrayMinLength,
+  arrayMaxLength,
+  eachItem,
 } from './presets';
 
 export {
@@ -63,6 +70,8 @@ export {
   ValidationScenario,
   ScenarioSkippedRule,
   ServerError,
+  PageState,
+  PageStateOptions,
 };
 
 export {
@@ -80,10 +89,15 @@ export {
   asyncCustom,
   withGroups,
   formatNames,
+  arrayMinLength,
+  arrayMaxLength,
+  eachItem,
   getMessageTemplate,
   sanitizeFormValues,
   sanitizeField,
   mergeServerErrors,
+  computePageState,
+  computePageStateSync,
 };
 
 export class FormValidator {
@@ -127,13 +141,28 @@ export class FormValidator {
     return sanitizeFormValues(values, this.schema);
   }
 
+  async computePageState(
+    values: Record<string, unknown>,
+    options?: Omit<PageStateOptions, 'locale'>,
+  ): Promise<PageState> {
+    return computePageState(this.schema, values, { locale: this.locale, ...options });
+  }
+
+  computePageStateSync(
+    values: Record<string, unknown>,
+    options?: Omit<PageStateOptions, 'locale' | 'skipAsync'>,
+  ): PageState {
+    return computePageStateSync(this.schema, values, { locale: this.locale, ...options });
+  }
+
   getVisibleFields(values: Record<string, unknown>): FieldDefinition[] {
+    const sanitized = sanitizeFormValues(values, this.schema);
     return this.schema.fields.filter((field) => {
       if (typeof field.when === 'function') {
-        return field.when(values);
+        return field.when(sanitized);
       }
       if (typeof field.visible === 'function') {
-        return field.visible(values);
+        return field.visible(sanitized);
       }
       return true;
     });

@@ -262,6 +262,26 @@ export function withGroups(rule: FieldRule, ...groups: string[]): FieldRule {
   return { ...rule, groups };
 }
 
+export function arrayMinLength(min: number, message?: string): FieldRule {
+  return { type: 'arrayMinLength', value: min, message, groups: ['step', 'submit'] };
+}
+
+export function arrayMaxLength(max: number, message?: string): FieldRule {
+  return { type: 'arrayMaxLength', value: max, message };
+}
+
+export function eachItem(
+  itemValidator: (itemValue: unknown, itemIndex: number, formValues: Record<string, unknown>) => boolean | string,
+  message?: string,
+): FieldRule {
+  return {
+    type: 'eachItem',
+    message,
+    itemValidator,
+    groups: ['step', 'submit'],
+  };
+}
+
 export const formatNames: Record<string, string> = {
   idCard: '身份证号',
   phone: '手机号',

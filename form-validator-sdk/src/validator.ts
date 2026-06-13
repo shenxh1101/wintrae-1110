@@ -12,6 +12,8 @@ import {
   ValidationScenario,
   ScenarioSkippedRule,
   ServerError,
+  PageState,
+  PageStateOptions,
 } from './types';
 import { getMessageTemplate } from './messages';
 import { formatNames } from './presets';
@@ -48,6 +50,7 @@ function resolveRuleMessage(
   field: FieldDefinition,
   locale: Locale,
   customMessage?: string,
+  index?: number,
 ): string {
   if (customMessage) return customMessage;
   if (rule.message) return rule.message;
@@ -83,6 +86,12 @@ function resolveRuleMessage(
       return tpl.custom(field.label);
     case 'async':
       return tpl.async(field.label);
+    case 'arrayMinLength':
+      return tpl.arrayMinLength(field.label, rule.value as number);
+    case 'arrayMaxLength':
+      return tpl.arrayMaxLength(field.label, rule.value as number);
+    case 'eachItem':
+      return tpl.eachItem(field.label, index ?? 0);
     default:
       return tpl.custom(field.label);
   }
@@ -127,6 +136,18 @@ function runSyncRule(
     if (rule.validator) {
       return rule.validator(value, formValues) as SyncValidatorResult;
     }
+    return true;
+  }
+
+  if (rule.type === 'arrayMinLength' || rule.type === 'arrayMaxLength') {
+    const arr = Array.isArray(value) ? value : [];
+    if (rule.type === 'arrayMinLength') {
+      return arr.length >= (rule.value as number);
+    }
+    return arr.length <= (rule.value as number);
+  }
+
+  if (rule.type === 'eachItem') {
     return true;
   }
 
@@ -298,6 +319,57 @@ async function validateInternal(
         continue;
       }
 
+      if (rule.type === 'eachItem' && rule.itemValidator && Array.isArray(value)) {
+        const arr = value as unknown[];
+        let anyFailed = false;
+        for (let idx = 0; idx < arr.length; idx++) {
+          const itemResult = await rule.itemValidator(arr[idx], idx, sanitizedValues);
+          const itemPassed = itemResult === true;
+          const itemErrorMessage = typeof itemResult === 'string' ? itemResult : undefined;
+          const primaryGroup = rule.groups && rule.groups.length > 0 ? rule.groups[0] : undefined;
+
+          const hit: FieldRuleHit = {
+            ruleIndex: i,
+            ruleType: rule.type,
+            passed: itemPassed,
+            async: isAsyncRule(rule),
+            group: primaryGroup,
+            index: idx,
+          };
+
+          if (!itemPassed) {
+            anyFailed = true;
+            const message = resolveRuleMessage(rule, field, locale, itemErrorMessage, idx);
+            hit.message = message;
+
+            const err: ValidationError = {
+              field: field.name,
+              label: field.label,
+              ruleType: rule.type,
+              message,
+              step: field.step,
+              async: isAsyncRule(rule),
+              group: primaryGroup,
+              index: idx,
+            };
+            state.errors.push(err);
+            errors.push(err);
+          }
+
+          state.ruleHits.push(hit);
+        }
+        if (!anyFailed) {
+          state.ruleHits.push({
+            ruleIndex: i,
+            ruleType: rule.type,
+            passed: true,
+            async: isAsyncRule(rule),
+            group: rule.groups && rule.groups.length > 0 ? rule.groups[0] : undefined,
+          });
+        }
+        continue;
+      }
+
       let ruleResult: SyncValidatorResult;
 
       if (isAsyncRule(rule)) {
@@ -396,10 +468,30 @@ async function validateInternal(
   }
 
   const errorsByStep: Record<number, ValidationError[]> = {};
+  const errorsByField: Record<string, ValidationError[]> = {};
+  const errorsByGroup: Record<string, ValidationError[]> = {};
+  const errorsByScenario: Record<ValidationScenario, ValidationError[]> = {
+    draft: [],
+    step: [],
+    submit: [],
+  };
+
   for (const err of errors) {
     const s = err.step ?? 0;
     if (!errorsByStep[s]) errorsByStep[s] = [];
     errorsByStep[s].push(err);
+
+    if (!errorsByField[err.field]) errorsByField[err.field] = [];
+    errorsByField[err.field].push(err);
+
+    if (err.group) {
+      if (!errorsByGroup[err.group]) errorsByGroup[err.group] = [];
+      errorsByGroup[err.group].push(err);
+    }
+
+    if (!err.group || err.group === 'draft') errorsByScenario.draft.push(err);
+    if (!err.group || err.group === 'step' || err.group === 'draft') errorsByScenario.step.push(err);
+    errorsByScenario.submit.push(err);
   }
 
   const firstError = errors.length > 0 ? errors[0] : null;
@@ -425,6 +517,9 @@ async function validateInternal(
     submitValues,
     scenarioSkippedRules,
     scenario,
+    errorsByField,
+    errorsByGroup,
+    errorsByScenario,
   };
 }
 
@@ -455,20 +550,18 @@ export async function validateField(
   return result.errors.length > 0 ? result.errors[0] : null;
 }
 
-export function validateSync(
+function buildSyncResult(
   schema: FormSchema,
   values: Record<string, unknown>,
-  options: Omit<ValidateOptions, 'skipAsync'> = {},
+  options: Omit<ValidateOptions, 'skipAsync'> & { skipAsyncInternal?: boolean },
 ): ValidationResult {
-  const syncOptions = { ...options, skipAsyncInternal: true };
-
   const {
     locale = 'zh-CN',
     step,
     fields,
     sanitize = true,
     scenario = 'submit',
-  } = syncOptions;
+  } = options;
 
   const sanitizedValues = sanitize
     ? sanitizeFormValues(values, schema)
@@ -542,6 +635,54 @@ export function validateSync(
           passed: true,
           async: true,
         });
+        continue;
+      }
+
+      if (rule.type === 'eachItem' && rule.itemValidator && Array.isArray(value)) {
+        const arr = value as unknown[];
+        let anyFailed = false;
+        for (let idx = 0; idx < arr.length; idx++) {
+          const itemResult = rule.itemValidator(arr[idx], idx, sanitizedValues) as SyncValidatorResult;
+          const itemPassed = itemResult === true;
+          const itemErrorMessage = typeof itemResult === 'string' ? itemResult : undefined;
+          const primaryGroup = rule.groups && rule.groups.length > 0 ? rule.groups[0] : undefined;
+
+          const hit: FieldRuleHit = {
+            ruleIndex: i,
+            ruleType: rule.type,
+            passed: itemPassed,
+            group: primaryGroup,
+            index: idx,
+          };
+
+          if (!itemPassed) {
+            anyFailed = true;
+            const message = resolveRuleMessage(rule, field, locale, itemErrorMessage, idx);
+            hit.message = message;
+
+            const err: ValidationError = {
+              field: field.name,
+              label: field.label,
+              ruleType: rule.type,
+              message,
+              step: field.step,
+              group: primaryGroup,
+              index: idx,
+            };
+            state.errors.push(err);
+            errors.push(err);
+          }
+
+          state.ruleHits.push(hit);
+        }
+        if (!anyFailed) {
+          state.ruleHits.push({
+            ruleIndex: i,
+            ruleType: rule.type,
+            passed: true,
+            group: rule.groups && rule.groups.length > 0 ? rule.groups[0] : undefined,
+          });
+        }
         continue;
       }
 
@@ -633,10 +774,30 @@ export function validateSync(
   }
 
   const errorsByStep: Record<number, ValidationError[]> = {};
+  const errorsByField: Record<string, ValidationError[]> = {};
+  const errorsByGroup: Record<string, ValidationError[]> = {};
+  const errorsByScenario: Record<ValidationScenario, ValidationError[]> = {
+    draft: [],
+    step: [],
+    submit: [],
+  };
+
   for (const err of errors) {
     const s = err.step ?? 0;
     if (!errorsByStep[s]) errorsByStep[s] = [];
     errorsByStep[s].push(err);
+
+    if (!errorsByField[err.field]) errorsByField[err.field] = [];
+    errorsByField[err.field].push(err);
+
+    if (err.group) {
+      if (!errorsByGroup[err.group]) errorsByGroup[err.group] = [];
+      errorsByGroup[err.group].push(err);
+    }
+
+    if (!err.group || err.group === 'draft') errorsByScenario.draft.push(err);
+    if (!err.group || err.group === 'step' || err.group === 'draft') errorsByScenario.step.push(err);
+    errorsByScenario.submit.push(err);
   }
 
   const firstError = errors.length > 0 ? errors[0] : null;
@@ -662,7 +823,18 @@ export function validateSync(
     submitValues,
     scenarioSkippedRules,
     scenario,
+    errorsByField,
+    errorsByGroup,
+    errorsByScenario,
   };
+}
+
+export function validateSync(
+  schema: FormSchema,
+  values: Record<string, unknown>,
+  options: Omit<ValidateOptions, 'skipAsync'> = {},
+): ValidationResult {
+  return buildSyncResult(schema, values, options);
 }
 
 export function validateStepSync(
@@ -671,7 +843,7 @@ export function validateStepSync(
   step: number,
   options: Omit<ValidateOptions, 'step' | 'skipAsync'> = {},
 ): ValidationResult {
-  return validateSync(schema, values, { ...options, step });
+  return buildSyncResult(schema, values, { ...options, step });
 }
 
 export function validateFieldSync(
@@ -680,7 +852,7 @@ export function validateFieldSync(
   fieldName: string,
   options: Omit<ValidateOptions, 'fields' | 'skipAsync'> = {},
 ): ValidationError | null {
-  const result = validateSync(schema, values, { ...options, fields: [fieldName] });
+  const result = buildSyncResult(schema, values, { ...options, fields: [fieldName] });
   return result.errors.length > 0 ? result.errors[0] : null;
 }
 
@@ -703,6 +875,15 @@ export function mergeServerErrors(
     mergedFieldStates[key] = { ...result.fieldStates[key], errors: [...result.fieldStates[key].errors] };
   }
 
+  const mergedErrorsByField = { ...result.errorsByField };
+  const mergedErrorsByStep = { ...result.errorsByStep };
+  const mergedErrorsByGroup = { ...result.errorsByGroup };
+  const mergedErrorsByScenario: Record<ValidationScenario, ValidationError[]> = {
+    draft: [...result.errorsByScenario.draft],
+    step: [...result.errorsByScenario.step],
+    submit: [...result.errorsByScenario.submit],
+  };
+
   for (const sErr of serverErrors) {
     const field = fieldMap.get(sErr.field);
     const label = field ? field.label : sErr.field;
@@ -718,6 +899,17 @@ export function mergeServerErrors(
     };
 
     mergedErrors.push(err);
+
+    if (!mergedErrorsByField[err.field]) mergedErrorsByField[err.field] = [];
+    mergedErrorsByField[err.field].push(err);
+
+    const s = err.step ?? 0;
+    if (!mergedErrorsByStep[s]) mergedErrorsByStep[s] = [];
+    mergedErrorsByStep[s].push(err);
+
+    mergedErrorsByScenario.draft.push(err);
+    mergedErrorsByScenario.step.push(err);
+    mergedErrorsByScenario.submit.push(err);
 
     if (mergedFieldStates[sErr.field]) {
       mergedFieldStates[sErr.field].errors.push(err);
@@ -735,20 +927,144 @@ export function mergeServerErrors(
     }
   }
 
-  const mergedErrorsByStep: Record<number, ValidationError[]> = {};
-  for (const err of mergedErrors) {
-    const s = err.step ?? 0;
-    if (!mergedErrorsByStep[s]) mergedErrorsByStep[s] = [];
-    mergedErrorsByStep[s].push(err);
-  }
-
   return {
     ...result,
     valid: false,
     errors: mergedErrors,
     errorsByStep: mergedErrorsByStep,
+    errorsByField: mergedErrorsByField,
+    errorsByGroup: mergedErrorsByGroup,
+    errorsByScenario: mergedErrorsByScenario,
     firstError: mergedErrors[0] || null,
     firstErrorStep: mergedErrors[0] ? (mergedErrors[0].step ?? 0) : null,
     fieldStates: mergedFieldStates,
+  };
+}
+
+export async function computePageState(
+  schema: FormSchema,
+  values: Record<string, unknown>,
+  options: PageStateOptions = {},
+): Promise<PageState> {
+  const {
+    locale = 'zh-CN',
+    currentStep = 1,
+    scenario = 'step',
+    skipAsync = false,
+  } = options;
+
+  const result = await validateInternal(schema, values, {
+    locale,
+    scenario,
+    skipAsync,
+  });
+
+  const stepSchemaFields = schema.fields.filter(
+    (f) => f.step === undefined || f.step === currentStep,
+  );
+  const visibleFields = stepSchemaFields.filter((f) =>
+    resolveFieldVisibility(f, result.sanitizedValues),
+  );
+
+  const currentStepErrors = result.errors.filter((e) => (e.step ?? 0) === currentStep);
+  const currentStepErrorsByField: Record<string, ValidationError[]> = {};
+  for (const err of currentStepErrors) {
+    if (!currentStepErrorsByField[err.field]) currentStepErrorsByField[err.field] = [];
+    currentStepErrorsByField[err.field].push(err);
+  }
+
+  const visibleFieldStates: Record<string, FieldValidationState> = {};
+  for (const f of visibleFields) {
+    if (result.fieldStates[f.name]) {
+      visibleFieldStates[f.name] = result.fieldStates[f.name];
+    }
+  }
+
+  return {
+    currentStep,
+    visibleFields,
+    visibleFieldNames: visibleFields.map((f) => f.name),
+    skippedFields: result.skippedFields,
+    allFieldStates: result.fieldStates,
+    visibleFieldStates,
+    currentStepErrors,
+    currentStepErrorsByField,
+    currentStepFirstError: currentStepErrors.length > 0 ? currentStepErrors[0] : null,
+    allErrors: result.errors,
+    allErrorsByStep: result.errorsByStep,
+    allErrorsByField: result.errorsByField,
+    allErrorsByGroup: result.errorsByGroup,
+    draftErrors: result.errorsByScenario.draft,
+    stepErrors: result.errorsByScenario.step,
+    submitErrors: result.errorsByScenario.submit,
+    sanitizedValues: result.sanitizedValues,
+    submitValues: result.submitValues,
+    scenarioSkippedRules: result.scenarioSkippedRules,
+    valid: result.valid,
+    currentStepValid: currentStepErrors.length === 0,
+    scenario,
+  };
+}
+
+export function computePageStateSync(
+  schema: FormSchema,
+  values: Record<string, unknown>,
+  options: PageStateOptions = {},
+): PageState {
+  const {
+    locale = 'zh-CN',
+    currentStep = 1,
+    scenario = 'step',
+  } = options;
+
+  const result = buildSyncResult(schema, values, {
+    locale,
+    scenario,
+  });
+
+  const stepSchemaFields = schema.fields.filter(
+    (f) => f.step === undefined || f.step === currentStep,
+  );
+  const visibleFields = stepSchemaFields.filter((f) =>
+    resolveFieldVisibility(f, result.sanitizedValues),
+  );
+
+  const currentStepErrors = result.errors.filter((e) => (e.step ?? 0) === currentStep);
+  const currentStepErrorsByField: Record<string, ValidationError[]> = {};
+  for (const err of currentStepErrors) {
+    if (!currentStepErrorsByField[err.field]) currentStepErrorsByField[err.field] = [];
+    currentStepErrorsByField[err.field].push(err);
+  }
+
+  const visibleFieldStates: Record<string, FieldValidationState> = {};
+  for (const f of visibleFields) {
+    if (result.fieldStates[f.name]) {
+      visibleFieldStates[f.name] = result.fieldStates[f.name];
+    }
+  }
+
+  return {
+    currentStep,
+    visibleFields,
+    visibleFieldNames: visibleFields.map((f) => f.name),
+    skippedFields: result.skippedFields,
+    allFieldStates: result.fieldStates,
+    visibleFieldStates,
+    currentStepErrors,
+    currentStepErrorsByField,
+    currentStepFirstError: currentStepErrors.length > 0 ? currentStepErrors[0] : null,
+    allErrors: result.errors,
+    allErrorsByStep: result.errorsByStep,
+    allErrorsByField: result.errorsByField,
+    allErrorsByGroup: result.errorsByGroup,
+    draftErrors: result.errorsByScenario.draft,
+    stepErrors: result.errorsByScenario.step,
+    submitErrors: result.errorsByScenario.submit,
+    sanitizedValues: result.sanitizedValues,
+    submitValues: result.submitValues,
+    scenarioSkippedRules: result.scenarioSkippedRules,
+    valid: result.valid,
+    currentStepValid: currentStepErrors.length === 0,
+    scenario,
   };
 }
